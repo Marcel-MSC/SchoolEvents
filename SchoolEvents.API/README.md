@@ -1,26 +1,23 @@
-# School Events — Teste Técnico
+# ⚙️ School Events API
 
-## O que implementa
-- Backend: .NET 8 Web API com EF Core (SQL Server), JWT auth, Swagger.
-- BackgroundService que sincroniza usuários e eventos do Microsoft Graph (client credentials).
-- Frontend: React + Vite + TypeScript + Tailwind.
-- Testes unitários com xUnit.
-- Migrations do EF Core.
+Backend do sistema de gerenciamento de eventos escolares desenvolvido em ASP.NET Core.
 
-## Requisitos
-- .NET 8 SDK
-- Node.js 18+
-- SQL Server (ou Docker)
-- (Opcional) Docker
+## 🛠️ Tecnologias
 
-## Rodando localmente (exemplo)
-### Backend
-1. Ajuste variáveis de ambiente:
-   - `ConnectionStrings__DefaultConnection`
-   - `Jwt__Key`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__ExpireMinutes`
-   - `Graph__ClientId`, `Graph__ClientSecret`, `Graph__TenantId`
-2. Criar base e rodar migrations:
+- **ASP.NET Core 6** - Framework web
+- **Entity Framework Core** - ORM
+- **SQL Server** - Banco de dados
+- **Azure AD** - Autenticação
+- **Swagger** - Documentação API
+
+## 🚀 Execução
+
 ```bash
-cd backend/src/SchoolEvents.Api
+# Restaurar pacotes
+dotnet restore
+
+# Executar aplicação
+dotnet clean && dotnet build && dotnet run
+
+# Executar migrações
 dotnet ef database update
-dotnet run
