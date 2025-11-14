@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    /* Saída incremental (mantém cache em builds do Vite) */
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    /* Compatibilidade moderna com browsers */
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "useDefineForClassFields": true,
+
+    /* Módulos */
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+
+    /* JSX */
+    "jsx": "react-jsx",
+
+    /* Import helpers */
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    /* Linting e segurança */
+    "strict": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "erasableSyntaxOnly": true,
+
+    /* Sem emitir arquivos JS (Vite cuida disso) */
+    "noEmit": true,
+
+    /* Tipos globais */
+    "types": ["vite/client"]
+  },
+
+  /* Inclui apenas código-fonte da aplicação */
+  "include": ["src"]
+}
