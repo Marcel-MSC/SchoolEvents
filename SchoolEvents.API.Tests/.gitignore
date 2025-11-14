@@ -1,0 +1,55 @@
+# Build outputs
+bin/
+obj/
+/publish/
+
+# Dependencies
+packages/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+/logs
+
+# Runtime data
+*.pid
+*.seed
+
+# Database
+*.mdf
+*.ldf
+*.sdf
+
+# Azure
+*.azure
+
+# Environment
+appsettings.Development.json
+appsettings.Local.json
+
+# Migrations (manter arquivos .cs mas ignorar compilados)
+Migrations/*.designer.cs
+
+# Project specific
+/inmrc/
+/kbls/
