@@ -34,13 +34,6 @@ packages/
 # Azure
 *.azure
 
-# Environment
-appsettings.Development.json
-appsettings.Local.json
-
-# Migrations (manter arquivos .cs mas ignorar compilados)
-Migrations/*.designer.cs
-
 # Project specific
 /inmrc/
 /kbls/

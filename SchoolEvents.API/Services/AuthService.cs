@@ -1,8 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
 using SchoolEvents.API.Data;
 using SchoolEvents.API.Models;
 
@@ -10,81 +10,139 @@ namespace SchoolEvents.API.Services
 {
     public class AuthService : IAuthService
     {
-        private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
+        private readonly IConfiguration _configuration;
 
-        public AuthService(IConfiguration configuration, ApplicationDbContext context)
+        public AuthService(ApplicationDbContext context, IConfiguration configuration)
         {
-            _configuration = configuration;
             _context = context;
+            _configuration = configuration;
         }
 
-        public async Task<AuthResponse?> AuthenticateAsync(LoginModel login)
+        public async Task<AuthResult?> AuthenticateAsync(LoginModel login)
         {
-            // Em produção, isso seria com Identity + Hash de senha
-            // Para demo, vamos usar um usuário fixo
-            if (login.Email == "admin@escola.com" && login.Password == "admin123")
+            // Se for login Microsoft (com a senha especial)
+            if (login.Password == "MICROSOFT_OAUTH")
             {
-                var user = new User 
-                { 
-                    Id = "admin-1",
+                return await AuthenticateOrCreateMicrosoftUserAsync(login.Email, "", "");
+            }
+
+            // Login normal: buscar usuário por email e verificar senha
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == login.Email);
+
+            // Caso especial: credenciais de teste (admin@escola.com / admin123)
+            if (user == null && login.Email == "admin@escola.com" && login.Password == "admin123")
+            {
+                user = new User
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Email = login.Email,
                     DisplayName = "Administrador",
-                    Email = "admin@escola.com"
+                    MicrosoftId = string.Empty,
+                    IsActive = true,
+                    LastSynced = DateTime.UtcNow
                 };
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+            }
+
+            if (user == null)
+                return null;
+
+            // Verificar senha (implemente sua lógica de hash/salt)
+            // if (!VerifyPassword(login.Password, user.PasswordHash)) 
+            //     return null;
+
+            var token = GenerateJwtToken(user);
+            
+            return new AuthResult
+            {
+                Success = true,
+                Token = token,
+                User = user
+            };
+        }
+
+        public async Task<AuthResult?> AuthenticateOrCreateMicrosoftUserAsync(string email, string displayName, string microsoftId)
+        {
+            try
+            {
+                // Buscar usuário pelo email
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+                if (user == null)
+                {
+                    // Criar novo usuário automaticamente
+                    user = new User
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Email = email,
+                        DisplayName = string.IsNullOrEmpty(displayName) ? email.Split('@')[0] : displayName,
+                        MicrosoftId = microsoftId // Salvar o ID da Microsoft se quiser
+                    };
+                    
+                    _context.Users.Add(user);
+                    await _context.SaveChangesAsync();
+                    
+                    Console.WriteLine($"✅ Novo usuário criado via Microsoft: {email}");
+                }
+                else
+                {
+                    // Atualizar informações se necessário
+                    if (!string.IsNullOrEmpty(displayName) && user.DisplayName != displayName)
+                    {
+                        user.DisplayName = displayName;
+                        _context.Users.Update(user);
+                        await _context.SaveChangesAsync();
+                    }
+                }
 
                 var token = GenerateJwtToken(user);
                 
-                return new AuthResponse
+                return new AuthResult
                 {
+                    Success = true,
                     Token = token,
-                    Expiration = DateTime.UtcNow.AddHours(2),
                     User = user
                 };
             }
-
-            // Buscar usuário no banco (se quiser usar usuários reais)
-            var dbUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == login.Email);
-            if (dbUser != null)
+            catch (Exception ex)
             {
-                // Em produção: verificar hash da senha
-                // Para demo, qualquer senha funciona para usuários do banco
-                var token = GenerateJwtToken(dbUser);
-                
-                return new AuthResponse
-                {
-                    Token = token,
-                    Expiration = DateTime.UtcNow.AddHours(2),
-                    User = dbUser
-                };
+                Console.WriteLine($"❌ Erro ao autenticar/criar usuário Microsoft: {ex.Message}");
+                return null;
             }
-
-            return null;
         }
 
-        public string GenerateJwtToken(User user)
+        private string GenerateJwtToken(User user)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured")));
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]!);
             
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-            var claims = new[]
+            var tokenDescriptor = new SecurityTokenDescriptor
             {
-                new Claim(ClaimTypes.NameIdentifier, user.Id),
-                new Claim(ClaimTypes.Name, user.DisplayName),
-                new Claim(ClaimTypes.Email, user.Email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+                Subject = new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, user.Id),
+                    new Claim(ClaimTypes.Name, user.DisplayName),
+                    new Claim(ClaimTypes.Email, user.Email)
+                }),
+                Expires = DateTime.UtcNow.AddHours(24),
+                Issuer = _configuration["Jwt:Issuer"],
+                Audience = _configuration["Jwt:Audience"],
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
+            
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return tokenHandler.WriteToken(token);
+        }
 
-            var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(2),
-                signingCredentials: credentials
-            );
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
+        // Método auxiliar para verificar senha (se necessário)
+        private bool VerifyPassword(string password, string passwordHash)
+        {
+            // Implemente sua lógica de verificação de senha
+            // Exemplo: return BCrypt.Verify(password, passwordHash);
+            return true; // Temporário - ajuste conforme sua implementação
         }
     }
 }

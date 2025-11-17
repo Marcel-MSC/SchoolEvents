@@ -27,6 +27,7 @@ export interface PagedResult<T> {
   totalPages: number;
   hasNext: boolean;
   hasPrevious: boolean;
+  onlyWithEvents?: boolean;
 }
 
 export interface LoginData {

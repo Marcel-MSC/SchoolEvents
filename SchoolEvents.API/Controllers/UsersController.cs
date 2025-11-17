@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using SchoolEvents.API.Data;
 using SchoolEvents.API.Services;
 using SchoolEvents.API.Models;
@@ -9,6 +10,7 @@ namespace SchoolEvents.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -32,7 +34,8 @@ namespace SchoolEvents.API.Controllers
         [HttpGet]
         public async Task<ActionResult<PagedResult<User>>> GetUsers(
             [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10)
+            [FromQuery] int pageSize = 10,
+            [FromQuery] bool onlyWithEvents = false)
         {
             try
             {
@@ -40,11 +43,16 @@ namespace SchoolEvents.API.Controllers
                 page = Math.Max(1, page);
                 pageSize = Math.Clamp(pageSize, 1, 100); // Máximo 100 por página
 
-                var totalCount = await _context.Users
-                    // .Where(u => u.IsActive)
-                    .CountAsync();
+                var query = _context.Users.AsQueryable();
+                if (onlyWithEvents)
+                {
+                    query = query
+                        .Where(u => _context.Events.Any(e => e.UserId == u.Id));
+                }
 
-                var users = await _context.Users
+                var totalCount = await query.CountAsync();
+
+                var users = await query
                     // .Where(u => u.IsActive)
                     .OrderBy(u => u.DisplayName)
                     .Skip((page - 1) * pageSize)

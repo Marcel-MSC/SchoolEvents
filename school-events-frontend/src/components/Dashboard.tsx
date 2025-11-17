@@ -8,12 +8,13 @@ export const Dashboard: React.FC = () => {
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
+    const [onlyWithEvents, setOnlyWithEvents] = useState(false);
 
     const { 
         data: usersData, 
         isLoading: usersLoading, 
         error: usersError 
-    } = useUsers({ page, pageSize });
+    } = useUsers({ page, pageSize, onlyWithEvents });
 
     const { 
         data: events = [], 
@@ -69,6 +70,20 @@ export const Dashboard: React.FC = () => {
                     totalCount={usersData?.totalCount || 0}
                     onPageChange={handlePageChange}
                     onPageSizeChange={handlePageSizeChange}
+                    filterControl={
+                        <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+                            <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                checked={onlyWithEvents}
+                                onChange={() => {
+                                    setOnlyWithEvents(prev => !prev);
+                                    setPage(1); // resetar página ao mudar filtro
+                                }}
+                            />
+                            <span>Somente com eventos</span>
+                        </label>
+                    }
                 />
 
                 <EventList

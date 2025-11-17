@@ -13,6 +13,7 @@ interface UserListProps {
   totalCount?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  filterControl?: React.ReactNode;
 }
 
 export const UserList: React.FC<UserListProps> = ({ 
@@ -26,7 +27,8 @@ export const UserList: React.FC<UserListProps> = ({
   totalPages = 1,
   totalCount = 0,
   onPageChange,
-  onPageSizeChange
+  onPageSizeChange,
+  filterControl,
 }) => {
   const [pageSize, setPageSize] = useState(10);
 
@@ -77,6 +79,11 @@ export const UserList: React.FC<UserListProps> = ({
             {totalCount > 0 ? `${totalCount} usuários encontrados` : 'Nenhum usuário'}
           </p>
         </div>
+        {filterControl && (
+          <div className="ml-4">
+            {filterControl}
+          </div>
+        )}
       </div>
 
       {/* Pagination Controls - Apenas se tiver paginação */}

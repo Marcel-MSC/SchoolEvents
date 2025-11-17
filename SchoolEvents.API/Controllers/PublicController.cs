@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SchoolEvents.API.Controllers
 {
@@ -7,6 +8,7 @@ namespace SchoolEvents.API.Controllers
     public class PublicController : ControllerBase
     {
         [HttpGet("test")]
+        [AllowAnonymous]
         public IActionResult Test()
         {
             return Ok(new { 

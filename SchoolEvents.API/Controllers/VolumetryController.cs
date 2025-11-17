@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using SchoolEvents.API.Services;
 
 namespace SchoolEvents.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class VolumetryController : ControllerBase
     {
         private readonly IGraphService _graphService;
