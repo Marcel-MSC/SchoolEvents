@@ -18,6 +18,15 @@ packages/
 *.swp
 *.swo
 
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
 # Logs
 *.log
 /logs
@@ -33,6 +42,13 @@ packages/
 
 # Azure
 *.azure
+
+# Environment
+appsettings.Development.json
+appsettings.Local.json
+
+# Migrations (manter arquivos .cs mas ignorar compilados)
+Migrations/*.designer.cs
 
 # Project specific
 /inmrc/
