@@ -127,7 +127,7 @@ namespace SchoolEvents.API.Jobs
                     return 0;
                 }
 
-                var graphEvents = await _graphService.GetUserEventsAsync(userMicrosoftId, 30);
+                var graphEvents = await _graphService.GetUserEventsAsync(userMicrosoftId, 180);
                 var eventsSynced = 0;
 
                 foreach (var graphEvent in graphEvents)

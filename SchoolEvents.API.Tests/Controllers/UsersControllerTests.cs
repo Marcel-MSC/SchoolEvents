@@ -9,9 +9,9 @@ namespace SchoolEvents.API.Controllers
     [Authorize]
     public class UsersController : ControllerBase
     {
-        private readonly IGraphService _graphService;  // ← MUDAR PARA IGraphService
+        private readonly IGraphService _graphService;
         
-        public UsersController(IGraphService graphService)  // ← MUDAR PARA IGraphService
+        public UsersController(IGraphService graphService) 
         {
             _graphService = graphService;
         }
@@ -19,14 +19,14 @@ namespace SchoolEvents.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
-            var users = await _graphService.GetUsersSampleAsync();  // ← MUDAR PARA GetUsersSampleAsync
+            var users = await _graphService.GetUsersSampleAsync();
             return Ok(users);
         }
         
         [HttpGet("{userId}/events")]
         public async Task<IActionResult> GetUserEvents(string userId)
         {
-            var events = await _graphService.GetUserEventsAsync(userId);  // ← Já está correto
+            var events = await _graphService.GetUserEventsAsync(userId);
             return Ok(events);
         }
     }

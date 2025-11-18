@@ -79,7 +79,7 @@ namespace SchoolEvents.API.Services
             }
         }
 
-        public async Task<IEnumerable<CalendarEvent>> GetUserEventsAsync(string userMicrosoftId, int maxResults = 30)
+        public async Task<IEnumerable<CalendarEvent>> GetUserEventsAsync(string userMicrosoftId, int maxResults = 180)
         {
             try
             {
@@ -194,8 +194,7 @@ namespace SchoolEvents.API.Services
 
                 foreach (var user in sampleUsers)
                 {
-                    // Usa o MicrosoftId (ID do Graph) para buscar eventos
-                    var events = await GetUserEventsAsync(user.MicrosoftId, 5);
+                    var events = await GetUserEventsAsync(user.MicrosoftId, 180);
                     if (events.Any())
                     {
                         usersWithEvents++;

@@ -16,7 +16,6 @@ namespace SchoolEvents.API.Controllers
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthController> _logger;
 
-        // CORREÇÃO: Parâmetros com nomes diferentes dos campos
         public AuthController(
             IAuthService authServiceParam, 
             IConfiguration configurationParam,
@@ -27,7 +26,6 @@ namespace SchoolEvents.API.Controllers
             _logger = loggerParam;
         }
 
-        // Configurações do Azure AD
         private string ClientId => _configuration["MicrosoftGraph:ClientId"]!;
         private string ClientSecret => _configuration["MicrosoftGraph:ClientSecret"]!;
         private string TenantId => _configuration["MicrosoftGraph:TenantId"]!;
@@ -81,7 +79,6 @@ namespace SchoolEvents.API.Controllers
                     });
                 }
 
-                // Trocar código por tokens
                 var tokenResult = await ExchangeCodeForTokens(request.Code);
 
                 if (!tokenResult.Success)
@@ -92,18 +89,14 @@ namespace SchoolEvents.API.Controllers
                     });
                 }
 
-                // Obter informações do usuário do Microsoft Graph
                 var userInfo = await GetMicrosoftUserInfo(tokenResult.AccessToken!);
 
-                // Criar um LoginModel com as informações do Microsoft Graph
                 var microsoftLogin = new LoginModel
                 {
                     Email = userInfo.Email,
-                    // Para Microsoft Auth, não temos senha, então usamos um valor especial
                     Password = "MICROSOFT_OAUTH"
                 };
 
-                // Usar o método AuthenticateAsync existente
                 var authResult = await _authService.AuthenticateAsync(microsoftLogin);
 
                 if (authResult == null)
@@ -137,7 +130,6 @@ namespace SchoolEvents.API.Controllers
             }
         }
 
-        // MÉTODOS EXISTENTES (mantidos para compatibilidade)
         [HttpPost("login")]
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginModel login)
@@ -162,7 +154,6 @@ namespace SchoolEvents.API.Controllers
         [Authorize]
         public IActionResult ValidateToken()
         {
-            // Se chegou aqui, o token JWT é válido
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var userName = User.FindFirst(ClaimTypes.Name)?.Value;
             var userEmail = User.FindFirst(ClaimTypes.Email)?.Value;
@@ -174,8 +165,6 @@ namespace SchoolEvents.API.Controllers
                 user = new { userId, userName, userEmail } 
             });
         }
-
-        // MÉTODOS PRIVADOS AUXILIARES
         private async Task<TokenResult> ExchangeCodeForTokens(string code)
         {
             try
@@ -196,8 +185,6 @@ namespace SchoolEvents.API.Controllers
                 {
                     Success = true,
                     AccessToken = result.AccessToken,
-                    // MSAL não expõe o refresh token diretamente para confidential clients.
-                    // A renovação deve ser feita com AcquireTokenSilent, se for necessário.
                     ExpiresIn = (int)(result.ExpiresOn - DateTimeOffset.Now).TotalSeconds
                 };
             }
@@ -234,7 +221,6 @@ namespace SchoolEvents.API.Controllers
         }
     }
 
-    // MODELS ESPECÍFICOS PARA MICROSOFT AUTH
     public class MicrosoftCallbackRequest
     {
         public string Code { get; set; } = string.Empty;
