@@ -6,324 +6,255 @@ namespace SchoolEvents.API.Services
 {
     public class GraphService : IGraphService
     {
-        private readonly GraphServiceClient _graphClient;
-        private readonly ILogger<GraphService> _logger;
+        private readonly IConfiguration _configuration;
+        private readonly string _clientId;
+        private readonly string _tenantId;
+        private readonly string _clientSecret;
 
-        public GraphService(IConfiguration configuration, ILogger<GraphService> logger)
+        public GraphService(IConfiguration configuration)
         {
-            _logger = logger;
+            _configuration = configuration;
+            _clientId = _configuration["MicrosoftGraph:ClientId"] ?? throw new ArgumentNullException("MicrosoftGraph:ClientId");
+            _tenantId = _configuration["MicrosoftGraph:TenantId"] ?? throw new ArgumentNullException("MicrosoftGraph:TenantId");
+            _clientSecret = _configuration["MicrosoftGraph:ClientSecret"] ?? throw new ArgumentNullException("MicrosoftGraph:ClientSecret");
+        }
 
-            var clientId = configuration["MicrosoftGraph:ClientId"];
-            var clientSecret = configuration["MicrosoftGraph:ClientSecret"];
-            var tenantId = configuration["MicrosoftGraph:TenantId"];
+        // MÉTODO PARA OBTER GRAPH CLIENT COM TOKEN DELEGADO
+        private GraphServiceClient GetDelegatedGraphClient(string userAccessToken)
+        {
+            var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", userAccessToken);
 
-            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-            _graphClient = new GraphServiceClient(credential);
+            return new GraphServiceClient(httpClient);
+        }
+
+        // MÉTODO PARA OBTER GRAPH CLIENT COM CLIENT CREDENTIALS
+        private GraphServiceClient GetApplicationGraphClient()
+        {
+            var credential = new ClientSecretCredential(_tenantId, _clientId, _clientSecret);
+            return new GraphServiceClient(credential);
+        }
+
+        // MÉTODO AUXILIAR PARA CONVERTER DateTimeTimeZone PARA DateTime
+        private DateTime? ParseDateTimeTimeZone(Microsoft.Graph.Models.DateTimeTimeZone? dateTimeTimeZone)
+        {
+            if (dateTimeTimeZone?.DateTime == null)
+                return null;
+
+            if (DateTime.TryParse(dateTimeTimeZone.DateTime, out DateTime result))
+                return result;
+
+            return null;
+        }
+
+        public async Task<IEnumerable<User>> GetUsersSampleAsync(int count = 50)
+        {
+            try
+            {
+                var graphClient = GetApplicationGraphClient();
+                
+                var users = await graphClient.Users
+                    .GetAsync(requestConfiguration =>
+                    {
+                        requestConfiguration.QueryParameters.Top = count;
+                        requestConfiguration.QueryParameters.Select = new[] { "id", "displayName", "mail", "userPrincipalName" };
+                    });
+
+                if (users?.Value == null)
+                    return new List<User>();
+
+                // Aqui usamos MicrosoftId para armazenar o ID do usuário no Microsoft Graph.
+                return users.Value.Select(u => new User
+                {
+                    MicrosoftId = u.Id ?? string.Empty,
+                    DisplayName = u.DisplayName ?? string.Empty,
+                    Email = u.Mail ?? u.UserPrincipalName ?? string.Empty
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Erro ao buscar usuários: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<CalendarEvent>> GetUserEventsAsync(string userMicrosoftId, int maxResults = 30)
+        {
+            try
+            {
+                var graphClient = GetApplicationGraphClient();
+
+                // Janela de tempo ampla: do início do ano passado até hoje
+                var start = new DateTime(DateTime.UtcNow.Year - 1, 1, 1);
+                var end = DateTime.UtcNow;
+
+                var events = await graphClient.Users[userMicrosoftId].CalendarView
+                    .GetAsync(requestConfiguration =>
+                    {
+                        requestConfiguration.QueryParameters.StartDateTime = start.ToString("o");
+                        requestConfiguration.QueryParameters.EndDateTime = end.ToString("o");
+                        requestConfiguration.QueryParameters.Top = maxResults;
+                        requestConfiguration.QueryParameters.Orderby = new[] { "start/dateTime" };
+                    });
+
+                if (events?.Value == null)
+                    return new List<CalendarEvent>();
+
+                // Mapeia os campos principais do evento do Microsoft Graph para o modelo interno
+                return events.Value.Select(e => new CalendarEvent
+                {
+                    MicrosoftId = e.Id ?? string.Empty,
+                    Subject = e.Subject ?? "Sem assunto",
+                    StartTime = ParseDateTimeTimeZone(e.Start) ?? DateTime.MinValue,
+                    EndTime = ParseDateTimeTimeZone(e.End) ?? DateTime.MinValue,
+                    Location = e.Location?.DisplayName,
+                    IsAllDay = e.IsAllDay ?? false,
+                    UserId = userMicrosoftId
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Erro ao buscar eventos para {userMicrosoftId}: {ex.Message}");
+                return new List<CalendarEvent>();
+            }
+        }
+
+        public async Task<IEnumerable<CalendarEvent>> GetUserEventsWithTokenAsync(string userAccessToken, string userMicrosoftId, int maxResults = 30)
+        {
+            try
+            {
+                var graphClient = GetDelegatedGraphClient(userAccessToken);
+
+                // Janela de tempo ampla: do início do ano passado até hoje
+                var start = new DateTime(DateTime.UtcNow.Year - 1, 1, 1);
+                var end = DateTime.UtcNow;
+
+                var events = await graphClient.Me.CalendarView
+                    .GetAsync(requestConfiguration =>
+                    {
+                        requestConfiguration.QueryParameters.StartDateTime = start.ToString("o");
+                        requestConfiguration.QueryParameters.EndDateTime = end.ToString("o");
+                        requestConfiguration.QueryParameters.Top = maxResults;
+                        requestConfiguration.QueryParameters.Orderby = new[] { "start/dateTime" };
+                    });
+
+                if (events?.Value == null)
+                    return new List<CalendarEvent>();
+
+                return events.Value.Select(e => new CalendarEvent
+                {
+                    MicrosoftId = e.Id ?? string.Empty,
+                    Subject = e.Subject ?? "Sem assunto",
+                    StartTime = ParseDateTimeTimeZone(e.Start) ?? DateTime.MinValue,
+                    EndTime = ParseDateTimeTimeZone(e.End) ?? DateTime.MinValue,
+                    Location = e.Location?.DisplayName,
+                    IsAllDay = e.IsAllDay ?? false,
+                    UserId = userMicrosoftId
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Erro ao buscar eventos com token delegado: {ex.Message}");
+                return new List<CalendarEvent>();
+            }
         }
 
         public async Task<int> GetUsersCountAsync()
         {
             try
             {
-                var usersResponse = await _graphClient.Users
+                var graphClient = GetApplicationGraphClient();
+                var users = await graphClient.Users
                     .GetAsync(requestConfiguration =>
                     {
-                        requestConfiguration.QueryParameters.Select = new[] { "id" };
                         requestConfiguration.QueryParameters.Top = 1;
+                        requestConfiguration.QueryParameters.Count = true;
                     });
 
-                return usersResponse?.Value?.Count ?? 0;
+                // CORREÇÃO: Converter long para int com cast explícito
+                return users?.OdataCount != null ? (int)users.OdataCount : 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao contar usuários");
-                throw;
+                Console.WriteLine($"❌ Erro ao contar usuários: {ex.Message}");
+                return 0;
             }
-        }
-
-        public async Task<IEnumerable<User>> GetUsersSampleAsync(int maxUsers = 50)
-        {
-            try
-            {
-                var usersResponse = await _graphClient.Users
-                    .GetAsync(requestConfiguration =>
-                    {
-                        requestConfiguration.QueryParameters.Select = new[] { "id", "displayName", "mail", "userPrincipalName", "jobTitle", "department" };
-                        requestConfiguration.QueryParameters.Top = maxUsers;
-                    });
-
-                if (usersResponse?.Value == null)
-                    return Enumerable.Empty<User>();
-
-                return usersResponse.Value.Select(u => new User
-                {
-                    MicrosoftId = u.Id ?? string.Empty,
-                    DisplayName = u.DisplayName ?? "Sem nome",
-                    Email = u.Mail ?? u.UserPrincipalName ?? string.Empty,
-                    JobTitle = u.JobTitle,
-                    Department = u.Department
-                }).ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Erro ao obter amostra de usuários");
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<CalendarEvent>> GetUserEventsAsync(string userId, int maxEvents = 50)
-        {
-            try
-            {
-                _logger.LogInformation("📅 Buscando eventos para usuário {UserId}", userId);
-
-                // Abordagem mais simples: buscar eventos sem filtro de data
-                var eventsResponse = await _graphClient.Users[userId].Events
-                    .GetAsync(requestConfiguration =>
-                    {
-                        requestConfiguration.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "isAllDay" };
-                        requestConfiguration.QueryParameters.Top = maxEvents;
-                        requestConfiguration.QueryParameters.Orderby = new[] { "start/dateTime desc" }; // Mais recentes primeiro
-                    });
-
-                if (eventsResponse?.Value == null)
-                {
-                    _logger.LogWarning("❌ Nenhum evento encontrado para usuário {UserId}", userId);
-                    return Enumerable.Empty<CalendarEvent>();
-                }
-
-                var result = new List<CalendarEvent>();
-
-                foreach (var e in eventsResponse.Value)
-                {
-                    if (e.Start != null && e.Start.DateTime != null && e.End != null && e.End.DateTime != null)
-                    {
-                        result.Add(new CalendarEvent
-                        {
-                            MicrosoftId = e.Id ?? string.Empty,
-                            Subject = e.Subject ?? "Sem assunto",
-                            StartTime = DateTime.Parse(e.Start.DateTime),
-                            EndTime = DateTime.Parse(e.End.DateTime),
-                            Location = e.Location?.DisplayName,
-                            IsAllDay = e.IsAllDay ?? false
-                        });
-                    }
-                    else
-                    {
-                        _logger.LogDebug("⚠️ Evento com dados incompletos ignorado: {Subject}", e.Subject);
-                    }
-                }
-
-                _logger.LogInformation("✅ Encontrados {Count} eventos para usuário {UserId}", result.Count, userId);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Erro ao buscar eventos do usuário {UserId}", userId);
-                return Enumerable.Empty<CalendarEvent>();
-            }
-        }
-
-        public async Task<SyncResult> AnalyzeVolumetryAsync()
-        {
-            var result = new SyncResult();
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            try
-            {
-                _logger.LogInformation("📊 Analisando volumetria do Microsoft Graph...");
-
-                // 1. Contar usuários
-                result.TotalUsers = await GetUsersCountAsync();
-
-                // 2. Amostra de usuários
-                var usersSample = await GetUsersSampleAsync(20);
-                result.SampledUsers = usersSample.Count();
-
-                _logger.LogInformation("👥 Encontrados {Count} usuários na amostra", result.SampledUsers);
-
-                // 3. Amostra de eventos (apenas 3 usuários para teste)
-                int usersWithEvents = 0;
-                foreach (var user in usersSample.Take(3))
-                {
-                    try
-                    {
-                        _logger.LogInformation("📅 Buscando eventos para usuário: {UserName}", user.DisplayName);
-                        var events = await GetUserEventsAsync(user.MicrosoftId, 5);
-                        result.TotalEvents += events.Count();
-                        usersWithEvents++;
-
-                        _logger.LogInformation("✅ Usuário {UserName}: {EventCount} eventos", user.DisplayName, events.Count());
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "⚠️  Não foi possível buscar eventos para usuário {UserId}", user.MicrosoftId);
-                    }
-                }
-
-                _logger.LogInformation("✅ Volumetria analisada: {Users} usuários totais, {Sampled} na amostra, {Events} eventos em {UsersWithEvents} usuários",
-                    result.TotalUsers, result.SampledUsers, result.TotalEvents, usersWithEvents);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Erro na análise de volumetria");
-                result.Error = ex.Message;
-            }
-            finally
-            {
-                stopwatch.Stop();
-                result.Duration = stopwatch.Elapsed;
-            }
-
-            return result;
         }
 
         public async Task<GraphMetrics> GetMetricsAsync()
         {
-            var metrics = new GraphMetrics();
-
             try
             {
-                _logger.LogInformation("📊 Coletando métricas do Microsoft Graph...");
+                var totalUsers = await GetUsersCountAsync();
+                var sampleUsers = await GetUsersSampleAsync(10);
+                
+                int usersWithEvents = 0;
+                int totalEvents = 0;
 
-                // 1. Contar usuários
-                var usersResponse = await _graphClient.Users
-                    .GetAsync(requestConfiguration =>
-                    {
-                        requestConfiguration.QueryParameters.Select = new[] { "id" };
-                        requestConfiguration.QueryParameters.Top = 5;
-                    });
-
-                metrics.TotalUsers = usersResponse?.Value?.Count ?? 0;
-                metrics.SampledUsers = metrics.TotalUsers;
-
-                // 2. Para cada usuário, tentar contar eventos (amostra pequena)
-                if (usersResponse?.Value != null)
+                foreach (var user in sampleUsers)
                 {
-                    foreach (var user in usersResponse.Value.Take(3))
+                    // Usa o MicrosoftId (ID do Graph) para buscar eventos
+                    var events = await GetUserEventsAsync(user.MicrosoftId, 5);
+                    if (events.Any())
                     {
-                        try
-                        {
-                            var eventsResponse = await _graphClient.Users[user.Id].Events
-                                .GetAsync(requestConfiguration =>
-                                {
-                                    requestConfiguration.QueryParameters.Select = new[] { "id" };
-                                    requestConfiguration.QueryParameters.Top = 5;
-                                });
-
-                            metrics.TotalEvents += eventsResponse?.Value?.Count ?? 0;
-                            metrics.SampledUsersWithEvents++;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Não foi possível acessar eventos do usuário {UserId}", user.Id);
-                        }
+                        usersWithEvents++;
+                        totalEvents += events.Count();
                     }
                 }
 
-                _logger.LogInformation("✅ Métricas coletadas: {Users} usuários, ~{Events} eventos",
-                    metrics.TotalUsers, metrics.TotalEvents);
+                return new GraphMetrics
+                {
+                    TotalUsers = totalUsers,
+                    TotalEvents = totalEvents,
+                    SampledUsers = sampleUsers.Count(),
+                    SampledUsersWithEvents = usersWithEvents,
+                    Error = null
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Erro ao coletar métricas do Microsoft Graph");
-                metrics.Error = ex.Message;
+                return new GraphMetrics
+                {
+                    TotalUsers = 0,
+                    TotalEvents = 0,
+                    SampledUsers = 0,
+                    SampledUsersWithEvents = 0,
+                    Error = ex.Message
+                };
             }
-
-            return metrics;
         }
 
-        #region Métodos Privados para Busca de Eventos
-
-        private async Task<IEnumerable<CalendarEvent>> TryCalendarViewWithUTC(string userId, int maxEvents)
+        public async Task<VolumetryResult> AnalyzeVolumetryAsync()
         {
-            var startTime = DateTimeOffset.UtcNow;
-            var endTime = startTime.AddDays(30);
-
-            var eventsResponse = await _graphClient.Users[userId].CalendarView
-                .GetAsync(requestConfiguration =>
-                {
-                    requestConfiguration.Headers.Add("Prefer", "outlook.timezone=\"UTC\"");
-                    requestConfiguration.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "isAllDay" };
-                    requestConfiguration.QueryParameters.Top = maxEvents;
-                    requestConfiguration.QueryParameters.StartDateTime = startTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-                    requestConfiguration.QueryParameters.EndDateTime = endTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-                });
-
-            return ProcessEvents(eventsResponse?.Value);
-        }
-
-        private async Task<IEnumerable<CalendarEvent>> TryCalendarViewWithTimeZone(string userId, int maxEvents)
-        {
-            var startTime = DateTimeOffset.Now;
-            var endTime = startTime.AddDays(30);
-
-            var eventsResponse = await _graphClient.Users[userId].CalendarView
-                .GetAsync(requestConfiguration =>
-                {
-                    requestConfiguration.Headers.Add("Prefer", "outlook.timezone=\"America/Sao_Paulo\"");
-                    requestConfiguration.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "isAllDay" };
-                    requestConfiguration.QueryParameters.Top = maxEvents;
-                    requestConfiguration.QueryParameters.StartDateTime = startTime.ToString("yyyy-MM-ddTHH:mm:ss.fff");
-                    requestConfiguration.QueryParameters.EndDateTime = endTime.ToString("yyyy-MM-ddTHH:mm:ss.fff");
-                });
-
-            return ProcessEvents(eventsResponse?.Value);
-        }
-
-        private async Task<IEnumerable<CalendarEvent>> TryEventsEndpointWithFilter(string userId, int maxEvents)
-        {
-            var eventsResponse = await _graphClient.Users[userId].Events
-                .GetAsync(requestConfiguration =>
-                {
-                    requestConfiguration.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "isAllDay" };
-                    requestConfiguration.QueryParameters.Top = maxEvents;
-                    // ✅ CORREÇÃO: Formato correto para o filtro - usar aspas simples
-                    requestConfiguration.QueryParameters.Filter = "start/dateTime ge '" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ") + "'";
-                    requestConfiguration.QueryParameters.Orderby = new[] { "start/dateTime" };
-                });
-
-            return ProcessEvents(eventsResponse?.Value);
-        }
-
-        private async Task<IEnumerable<CalendarEvent>> TryEventsEndpointWithoutFilter(string userId, int maxEvents)
-        {
-            var eventsResponse = await _graphClient.Users[userId].Events
-                .GetAsync(requestConfiguration =>
-                {
-                    requestConfiguration.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "isAllDay" };
-                    requestConfiguration.QueryParameters.Top = maxEvents;
-                    requestConfiguration.QueryParameters.Orderby = new[] { "start/dateTime desc" };
-                });
-
-            return ProcessEvents(eventsResponse?.Value);
-        }
-
-        private IEnumerable<CalendarEvent> ProcessEvents(IList<Microsoft.Graph.Models.Event>? events)
-        {
-            if (events == null) return Enumerable.Empty<CalendarEvent>();
-
-            var result = new List<CalendarEvent>();
-
-            foreach (var e in events)
+            try
             {
-                if (e.Start != null && e.Start.DateTime != null && e.End != null && e.End.DateTime != null)
+                var startTime = DateTime.Now;
+                var metrics = await GetMetricsAsync();
+                var duration = DateTime.Now - startTime;
+
+                return new VolumetryResult
                 {
-                    result.Add(new CalendarEvent
-                    {
-                        MicrosoftId = e.Id ?? string.Empty,
-                        Subject = e.Subject ?? "Sem assunto",
-                        StartTime = DateTime.Parse(e.Start.DateTime),
-                        EndTime = DateTime.Parse(e.End.DateTime),
-                        Location = e.Location?.DisplayName,
-                        IsAllDay = e.IsAllDay ?? false
-                    });
-                }
+                    Success = true,
+                    TotalUsers = metrics.TotalUsers,
+                    TotalEvents = metrics.TotalEvents,
+                    SampledUsers = metrics.SampledUsers,
+                    Duration = duration,
+                    Error = null
+                };
             }
-
-            return result;
+            catch (Exception ex)
+            {
+                return new VolumetryResult
+                {
+                    Success = false,
+                    TotalUsers = 0,
+                    TotalEvents = 0,
+                    SampledUsers = 0,
+                    Duration = TimeSpan.Zero,
+                    Error = ex.Message
+                };
+            }
         }
-
-        #endregion
     }
 }

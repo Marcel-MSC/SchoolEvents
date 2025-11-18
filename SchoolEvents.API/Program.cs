@@ -6,11 +6,11 @@ using Hangfire;
 using Hangfire.SqlServer;
 using SchoolEvents.API.Data;
 using SchoolEvents.API.Services;
-using SchoolEvents.API.Models;
 using SchoolEvents.API.Jobs;
 using Hangfire.Dashboard;
 using Microsoft.Graph;
 using Azure.Identity;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,9 +32,11 @@ builder.Services.AddCors(options =>
 });
 
 // FASE 2: Entity Framework
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+builder.Services.AddDbContext<ApplicationDbContext>(options => 
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// FASE 2.1: Health Checks (CORRIGIDO - conforme documentação)
+builder.Services.AddHealthChecks();
 
 // FASE 3: Microsoft Graph com Azure Identity
 builder.Services.AddSingleton(provider =>
@@ -50,10 +52,7 @@ builder.Services.AddSingleton(provider =>
         throw new InvalidOperationException("Microsoft Graph credentials are not configured properly.");
     }
 
-    // Configurar ClientSecretCredential
     var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-
-    // Criar GraphServiceClient
     var graphClient = new GraphServiceClient(credential);
 
     Console.WriteLine("✅ Microsoft Graph Service Client configurado com sucesso");
@@ -64,9 +63,8 @@ builder.Services.AddSingleton(provider =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGraphService, GraphService>();
 
-
 // FASE 5: Hangfire
-var hangfireConnection = builder.Configuration.GetConnectionString("HangfireConnection") ?? connectionString;
+var hangfireConnection = builder.Configuration.GetConnectionString("HangfireConnection");
 Console.WriteLine($"🔍 Hangfire Connection: {hangfireConnection}");
 
 builder.Services.AddHangfire(config => config
@@ -112,13 +110,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseHttpsRedirection();
+
+// Roteamento deve vir antes de autenticação/autorização
+app.UseRouting();
+
 app.UseCors("AllowReactApp");
 
 // Authentication & Authorization
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.UseHttpsRedirection();
 
 // FASE 7: Inicializar banco de dados
 using (var scope = app.Services.CreateScope())
@@ -134,7 +135,6 @@ using (var scope = app.Services.CreateScope())
         {
             Console.WriteLine("✅ Conexão com banco estabelecida!");
             
-            // Tentar contar usuários (se a tabela existir)
             try 
             {
                 var userCount = await dbContext.Users.CountAsync();
@@ -149,7 +149,6 @@ using (var scope = app.Services.CreateScope())
         {
             Console.WriteLine("❌ Não foi possível conectar ao banco");
         }
-        
     }
     catch (Exception ex)
     {
@@ -180,7 +179,7 @@ try
     {
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
         
-        // Job básico de health check
+        // Job de health check
         recurringJobManager.AddOrUpdate(
             "basic-health-check",
             () => Console.WriteLine("✅ Health check executado: " + DateTime.Now),
@@ -195,20 +194,47 @@ catch (Exception ex)
     Console.WriteLine("⚠️  Hangfire jobs não funcionarão, mas a API continuará rodando");
 }
 
+// FASE 10: Configurar endpoints
+// Endpoint health check
+app.MapHealthChecks("/health");
+
 app.MapControllers();
 
-// Endpoint health check básico
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
-
-Console.WriteLine("🚀 School Events API iniciada com Microsoft Graph Integration!");
-Console.WriteLine("📊 Hangfire Dashboard: /hangfire");
-Console.WriteLine("📚 Swagger UI: /swagger");
-Console.WriteLine("❤️  Health Check: /health");
+// FASE 11: Mostrar URLs quando a aplicação iniciar
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Console.WriteLine("\n✨ SchoolEvents API está rodando!");
+    Console.WriteLine("📍 Endpoints disponíveis (Ctrl+Click para abrir):");
+    
+    var urls = app.Urls;
+    
+    foreach (var url in urls)
+    {
+        var baseUrl = url
+            .Replace("0.0.0.0", "localhost")
+            .Replace("[::]", "localhost")
+            .Replace("+", "localhost");
+        
+        Console.WriteLine($"\n   📚 Swagger UI: {baseUrl}/swagger");
+        Console.WriteLine($"   ⚙️ Hangfire Dashboard: {baseUrl}/hangfire");
+        Console.WriteLine($"   ❤️ Health Check: {baseUrl}/health");
+        Console.WriteLine($"   🔍 Health Ready: {baseUrl}/health/ready");
+        Console.WriteLine($"   🎯 API Base: {baseUrl}/api");
+    }
+    
+    Console.WriteLine("\n💡 Pressione Ctrl+C para parar a aplicação");
+});
 
 app.Run();
 
 // Filtro de autorização para o Hangfire Dashboard
 public class HangfireAuthorizationFilter : IDashboardAuthorizationFilter
 {
-    public bool Authorize(DashboardContext context) => true;
+    public bool Authorize(DashboardContext context)
+    {
+        var httpContext = context.GetHttpContext();
+
+        // Somente usuários autenticados podem acessar o dashboard do Hangfire
+        return httpContext.User?.Identity?.IsAuthenticated == true;
+    }
 }

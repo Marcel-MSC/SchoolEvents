@@ -6,19 +6,26 @@ interface UseUsersProps {
   page?: number;
   pageSize?: number;
   enabled?: boolean;
+  onlyWithEvents?: boolean
 }
 
 export const useUsers = ({ 
   page = 1, 
   pageSize = 10, 
-  enabled = true 
+  enabled= true,
+  onlyWithEvents = false
 }: UseUsersProps = {}) => {
   return useQuery({
-    queryKey: ['users', page, pageSize],
+    queryKey: ['users', page, pageSize, !!onlyWithEvents],
     queryFn: async (): Promise<PagedResult<User>> => {
       const response = await api.get<PagedResult<User>>('/users', {
-        params: { page, pageSize }
+        params: { 
+          page, 
+          pageSize,
+          onlyWithEvents,
+        },
       });
+      
       return response.data;
     },
     enabled,
