@@ -6,11 +6,9 @@ using Hangfire;
 using Hangfire.SqlServer;
 using SchoolEvents.API.Data;
 using SchoolEvents.API.Services;
-using SchoolEvents.API.Jobs;
 using Hangfire.Dashboard;
 using Microsoft.Graph;
 using Azure.Identity;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -117,9 +115,39 @@ app.UseRouting();
 
 app.UseCors("AllowReactApp");
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Cookies.TryGetValue("hf_token", out var token))
+    {
+        context.Request.Headers["Authorization"] = $"Bearer {token}";
+    }
+
+    await next();
+});
+
+
 // Authentication & Authorization
 app.UseAuthentication();
 app.UseAuthorization();
+
+
+app.MapGet("/hangfire-login", (HttpContext ctx, string token) =>
+{
+    ctx.Response.Cookies.Append("hf_token", token, new CookieOptions
+    {
+        HttpOnly = true,
+        Secure = false,
+        SameSite = SameSiteMode.Lax
+    });
+
+    return Results.Redirect("/hangfire");
+});
+
+app.MapGet("/hangfire-logout", (HttpContext ctx) =>
+{
+    ctx.Response.Cookies.Delete("hf_token");
+    return Results.Redirect("/");
+});
 
 // FASE 7: Inicializar banco de dados
 using (var scope = app.Services.CreateScope())
@@ -227,14 +255,11 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 app.Run();
 
-// Filtro de autorização para o Hangfire Dashboard
 public class HangfireAuthorizationFilter : IDashboardAuthorizationFilter
 {
     public bool Authorize(DashboardContext context)
     {
         var httpContext = context.GetHttpContext();
-
-        // Somente usuários autenticados podem acessar o dashboard do Hangfire
         return httpContext.User?.Identity?.IsAuthenticated == true;
     }
 }

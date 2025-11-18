@@ -21,16 +21,12 @@ namespace SchoolEvents.API.Services
 
         public async Task<AuthResult?> AuthenticateAsync(LoginModel login)
         {
-            // Se for login Microsoft (com a senha especial)
             if (login.Password == "MICROSOFT_OAUTH")
             {
                 return await AuthenticateOrCreateMicrosoftUserAsync(login.Email, "", "");
             }
-
-            // Login normal: buscar usuário por email e verificar senha
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == login.Email);
 
-            // Caso especial: credenciais de teste (admin@escola.com / admin123)
             if (user == null && login.Email == "admin@escola.com" && login.Password == "admin123")
             {
                 user = new User
@@ -50,10 +46,6 @@ namespace SchoolEvents.API.Services
             if (user == null)
                 return null;
 
-            // Verificar senha (implemente sua lógica de hash/salt)
-            // if (!VerifyPassword(login.Password, user.PasswordHash)) 
-            //     return null;
-
             var token = GenerateJwtToken(user);
             
             return new AuthResult
@@ -68,18 +60,16 @@ namespace SchoolEvents.API.Services
         {
             try
             {
-                // Buscar usuário pelo email
                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
 
                 if (user == null)
                 {
-                    // Criar novo usuário automaticamente
                     user = new User
                     {
                         Id = Guid.NewGuid().ToString(),
                         Email = email,
                         DisplayName = string.IsNullOrEmpty(displayName) ? email.Split('@')[0] : displayName,
-                        MicrosoftId = microsoftId // Salvar o ID da Microsoft se quiser
+                        MicrosoftId = microsoftId
                     };
                     
                     _context.Users.Add(user);
@@ -89,7 +79,6 @@ namespace SchoolEvents.API.Services
                 }
                 else
                 {
-                    // Atualizar informações se necessário
                     if (!string.IsNullOrEmpty(displayName) && user.DisplayName != displayName)
                     {
                         user.DisplayName = displayName;
@@ -135,14 +124,6 @@ namespace SchoolEvents.API.Services
             
             var token = tokenHandler.CreateToken(tokenDescriptor);
             return tokenHandler.WriteToken(token);
-        }
-
-        // Método auxiliar para verificar senha (se necessário)
-        private bool VerifyPassword(string password, string passwordHash)
-        {
-            // Implemente sua lógica de verificação de senha
-            // Exemplo: return BCrypt.Verify(password, passwordHash);
-            return true; // Temporário - ajuste conforme sua implementação
         }
     }
 }

@@ -11,7 +11,6 @@ namespace SchoolEvents.API.Models
         public DateTime LastSynced { get; set; } = DateTime.UtcNow;
         public bool IsActive { get; set; } = true;
 
-        // Navigation property
         public List<CalendarEvent> Events { get; set; } = new();
     }
 }

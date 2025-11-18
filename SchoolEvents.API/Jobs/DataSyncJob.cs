@@ -41,6 +41,13 @@ namespace SchoolEvents.API.Jobs
 
                 foreach (var graphUser in graphUsers)
                 {
+
+                    if (string.IsNullOrWhiteSpace(graphUser.MicrosoftId))
+                    {
+                        _logger.LogWarning("⚠️ Usuário ignorado: MicrosoftId vazio. Nome: {DisplayName}, Email: {Email}",
+                                    graphUser.DisplayName, graphUser.Email);
+                        continue;
+                    }
                     // Localizar usuário pela MicrosoftId (id do Graph)
                     var existingUser = await _context.Users
                         .FirstOrDefaultAsync(u => u.MicrosoftId == graphUser.MicrosoftId);
@@ -120,7 +127,7 @@ namespace SchoolEvents.API.Jobs
                     return 0;
                 }
 
-                var graphEvents = await _graphService.GetUserEventsAsync(userMicrosoftId, 30);
+                var graphEvents = await _graphService.GetUserEventsAsync(userMicrosoftId, 180);
                 var eventsSynced = 0;
 
                 foreach (var graphEvent in graphEvents)
@@ -233,7 +240,7 @@ namespace SchoolEvents.API.Jobs
                 throw;
             }
         }
-        
+
         [AutomaticRetry(Attempts = 3)]
         public async Task CleanupOldDataAsync()
         {

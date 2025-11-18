@@ -177,7 +177,7 @@ namespace SchoolEvents.API.Controllers
                     // Sincronizar eventos também
                     try
                     {
-                        var userEvents = await _graphService.GetUserEventsAsync(graphUser.MicrosoftId, 30);
+                        var userEvents = await _graphService.GetUserEventsAsync(graphUser.MicrosoftId, 180);
                         foreach (var graphEvent in userEvents)
                         {
                             var existingEvent = await _context.Events
